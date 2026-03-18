@@ -1,0 +1,40 @@
+WITH p AS (
+SELECT
+user.istyle_id AS istyle_id, -- アイスタイルID
+at_cosme_brand.id AS brand_id --アットコスメのブランドID
+FROM `datamart-177012.dwh__shopping.obt__shopping__purchases` -- 2025/12/12にテーブル移行あり。参照先 https://docs.google.com/spreadsheets/d/1MewD1VGTVnOm9anYhjmM9mY4J5kgW3sBzQDJs4wxhJM/edit?gid=0#gid=0
+WHERE date.date_day BETWEEN '2025-04-01' AND '2026-03-15'
+-- 2025年4月1日から2026年3月15日の間にSHOPPING購買があったユーザーを抽出
+/* 2025/12/23_ショッピング購買条件指定をT&Cにて修正 */
+AND user.istyle_id IS NOT NULL -- 会員IDがあるユーザーに限定
+AND shopping_purchase.mall_type in ("コム","@cosme shopping") --本店に限定 --変更点
+AND shopping_purchase.purchase_status not in ("キャンセル","一部返品","返品","予約出荷待ち") --10：キャンセル　11：一部返品　12：返品　13：予約出荷待ちを除外--変更点
+AND shopping_purchase.is_product_cancelled is FALSE --受注伝票上のキャンセル除外
+AND shopping_product.promotion_item_flag is FALSE --販促品除外（FALSE：通常商品、TRUE：販促品）
+AND shopping_purchase.extra_flag = "通常品" --サンプル除外（0:通常品、1:セグメントサンプル、2:ノベルティ同梱）
+
+UNION ALL
+
+SELECT
+user.istyle_id AS istyle_id, -- アイスタイルID
+at_cosme_brand.id AS brand_id --アットコスメのブランドID
+FROM `datamart-177012.dwh__store.obt__store__purchase_details`
+WHERE purchase_details.purchase.purchased_datetime BETWEEN '2025-04-01' AND '2026-03-15' -- STORE側の日付カラムは変更なしと仮定
+-- 2025年4月1日から2026年3月15日の間にSTORE購買があったユーザーを抽出
+/* 2025/12/23_ストア購買条件指定をT&Cにて修正 */
+AND user.istyle_id IS NOT NULL -- 会員IDがあるユーザーに限定
+AND purchase_details.purchase.returned.status = "通常購入" --返品除外
+AND purchase_details.purchase.is_deleted is FALSE --購入伝票上のキャンセル除外
+AND purchase_details.purchase_detail.is_deleted is FALSE --購入明細上のキャンセル除外
+)
+
+SELECT
+p.istyle_id,
+(ARRAY_AGG(p.brand_id ORDER BY RAND() LIMIT 1))[OFFSET(0)] AS brand_id -- istyle_idごとに、対象ブランドの中からランダムで1つ brand_id を抽出
+
+FROM p
+INNER JOIN
+/* 2026年2月20%ポイントバック対象ブランド */
+`business-intelligence-242606.app_growth.list_20260213_20pointbacklist` AS b -- 対象ブランドのテーブルを作成してJOIN
+ON p.brand_id = b.brand_id -- brand_idで結合
+GROUP BY p.istyle_id;
