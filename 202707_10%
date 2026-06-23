@@ -1,0 +1,39 @@
+WITH p AS (
+SELECT
+user.istyle_id AS istyle_id, -- アイスタイルID
+at_cosme_brand.id AS brand_id --アットコスメのブランドID
+FROM `datamart-177012.dwh__shopping.obt__shopping__purchase_details`
+WHERE date.date_day BETWEEN '2025-06-24' AND '2026-06-23'
+-- 2025年6月24日から2026年6月23日の間にSHOPPING購買があったユーザーを抽出
+/* 2025/12/23_ショッピング購買条件指定をT&Cにて修正 */
+AND purchase_details.purchase.mall_type in ("コム","@cosme shopping") --本店に限定 --変更点
+AND shopping_product.promotion_item_flag is FALSE --販促品除外（FALSE：通常商品、TRUE：販促品）
+AND purchase_details.purchase_detail.extra_flag= "通常品" --サンプル除外（0:通常品、1:セグメントサンプル、2:ノベルティ同梱）
+
+
+UNION ALL
+
+
+SELECT
+user.istyle_id AS istyle_id, -- アイスタイルID
+at_cosme_brand.id AS brand_id --アットコスメのブランドID
+FROM `datamart-177012.dwh__store.obt__store__purchase_details`
+WHERE purchase_details.purchase.purchased_datetime BETWEEN '2025-06-24' AND '2026-06-23' -- STORE側の日付カラムは変更なしと仮定
+-- 2025年6月24日から2026年6月23日の間にSTORE購買があったユーザーを抽出
+/* 2025/12/23_ストア購買条件指定をT&Cにて修正 */
+AND user.istyle_id IS NOT NULL -- 会員IDがあるユーザーに限定
+AND purchase_details.purchase.returned.status = "通常購入" --返品除外
+AND purchase_details.purchase.is_deleted is FALSE --購入伝票上のキャンセル除外
+AND purchase_details.purchase_detail.is_deleted is FALSE --購入明細上のキャンセル除外
+)
+
+
+SELECT
+p.istyle_id,
+(ARRAY_AGG(p.brand_id ORDER BY RAND() LIMIT 1))[OFFSET(0)] AS brand_id -- istyle_idごとに、対象ブランドの中からランダムで1つ brand_id を抽出
+
+
+FROM p
+where brand_id in(215,104,438,83,85,643,3556,115556,122729,126186)
+
+  GROUP BY istyle_id;
